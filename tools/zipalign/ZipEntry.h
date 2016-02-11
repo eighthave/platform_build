@@ -94,6 +94,11 @@ public:
     time_t getModWhen(void) const;
 
     /*
+     * Set the modification date.
+     */
+    void setModWhen(time_t when);
+
+    /*
      * Return the archived file name.
      */
     const char* getFileName(void) const { return (const char*) mCDE.mFileName; }
@@ -180,11 +185,6 @@ protected:
      */
     void setDataInfo(long uncompLen, long compLen, uint32_t crc32,
         int compressionMethod);
-
-    /*
-     * Set the modification date.
-     */
-    void setModWhen(time_t when);
 
     /*
      * Return the offset of the local file header.

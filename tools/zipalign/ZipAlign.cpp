@@ -32,13 +32,14 @@ void usage(void)
     fprintf(stderr, "Zip alignment utility\n");
     fprintf(stderr, "Copyright (C) 2009 The Android Open Source Project\n\n");
     fprintf(stderr,
-        "Usage: zipalign [-f] [-p] [-v] [-z] <align> infile.zip outfile.zip\n"
+        "Usage: zipalign [-f] [-p] [-t] [-v] [-z] <align> infile.zip outfile.zip\n"
         "       zipalign -c [-v] <align> infile.zip\n\n" );
     fprintf(stderr,
         "  <align>: alignment in bytes, e.g. '4' provides 32-bit alignment\n");
     fprintf(stderr, "  -c: check alignment only (does not modify file)\n");
     fprintf(stderr, "  -f: overwrite existing outfile.zip\n");
     fprintf(stderr, "  -p: page align stored shared object files\n");
+    fprintf(stderr, "  -t: zero out timestamps for reproducible builds\n");
     fprintf(stderr, "  -v: verbose output\n");
     fprintf(stderr, "  -z: recompress using Zopfli\n");
 }
@@ -64,7 +65,7 @@ static int getAlignment(bool pageAlignSharedLibs, int defaultAlignment,
  * Copy all entries from "pZin" to "pZout", aligning as needed.
  */
 static int copyAndAlign(ZipFile* pZin, ZipFile* pZout, int alignment, bool zopfli,
-    bool pageAlignSharedLibs)
+    bool pageAlignSharedLibs, time_t timestamp)
 {
     int numEntries = pZin->getNumEntries();
     ZipEntry* pEntry;
@@ -79,6 +80,10 @@ static int copyAndAlign(ZipFile* pZin, ZipFile* pZout, int alignment, bool zopfl
         if (pEntry == NULL) {
             fprintf(stderr, "ERROR: unable to retrieve entry %d\n", i);
             return 1;
+        }
+
+        if (timestamp) {
+            pEntry->setModWhen(timestamp);
         }
 
         if (pEntry->isCompressed()) {
@@ -126,7 +131,8 @@ static int copyAndAlign(ZipFile* pZin, ZipFile* pZout, int alignment, bool zopfl
  * output file exists and "force" wasn't specified.
  */
 static int process(const char* inFileName, const char* outFileName,
-    int alignment, bool force, bool zopfli, bool pageAlignSharedLibs)
+    int alignment, bool force, bool zopfli, bool pageAlignSharedLibs,
+    time_t timestamp)
 {
     ZipFile zin, zout;
 
@@ -157,7 +163,7 @@ static int process(const char* inFileName, const char* outFileName,
         return 1;
     }
 
-    int result = copyAndAlign(&zin, &zout, alignment, zopfli, pageAlignSharedLibs);
+    int result = copyAndAlign(&zin, &zout, alignment, zopfli, pageAlignSharedLibs, timestamp);
     if (result != 0) {
         printf("zipalign: failed rewriting '%s' to '%s'\n",
             inFileName, outFileName);
@@ -228,6 +234,7 @@ int main(int argc, char* const argv[])
     bool verbose = false;
     bool zopfli = false;
     bool pageAlignSharedLibs = false;
+    time_t timestamp = 0;
     int result = 1;
     int alignment;
     char* endp;
@@ -260,6 +267,14 @@ int main(int argc, char* const argv[])
             case 'p':
                 pageAlignSharedLibs = true;
                 break;
+            case 't':
+              /*
+               * A magic number for the earliest UNIX timestamp that can be safely
+               * represented by a ZIP file. It is not exactly UTC 1980, but instead
+               * 1980-01-01 12:00:02 so that no time zone oddities can cause issues.
+               */
+                timestamp = 315576002;
+                break;
             default:
                 fprintf(stderr, "ERROR: unknown flag -%c\n", *cp);
                 wantUsage = true;
@@ -290,7 +305,7 @@ int main(int argc, char* const argv[])
         result = verify(argv[1], alignment, verbose, pageAlignSharedLibs);
     } else {
         /* create the new archive */
-        result = process(argv[1], argv[2], alignment, force, zopfli, pageAlignSharedLibs);
+        result = process(argv[1], argv[2], alignment, force, zopfli, pageAlignSharedLibs, timestamp);
 
         /* trust, but verify */
         if (result == 0) {
